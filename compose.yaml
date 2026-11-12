@@ -1,0 +1,92 @@
+name: bueroplan
+services:
+  app:
+    image: bueroplan:${APP_VERSION:-1.4.14}
+    build: .
+    restart: unless-stopped
+    init: true
+    environment:
+      APP_ORIGIN: ${APP_ORIGIN:?Bitte .env aus .env.example erstellen}
+      DATABASE_PATH: /data/bueroplan.sqlite
+      BACKUP_DIR: /backups
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - app_data:/data
+      - ${BACKUP_PATH:-./backups}:/backups
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+  backup:
+    image: bueroplan:${APP_VERSION:-1.4.14}
+    restart: unless-stopped
+    init: true
+    command: ["node", "scripts/backup-loop.mjs"]
+    environment:
+      DATABASE_PATH: /data/bueroplan.sqlite
+      BACKUP_DIR: /backups
+    volumes:
+      - app_data:/data
+      - ${BACKUP_PATH:-./backups}:/backups
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+  notifications:
+    image: bueroplan:${APP_VERSION:-1.4.14}
+    restart: unless-stopped
+    init: true
+    command: ["node", "scripts/notification-loop.mjs"]
+    environment:
+      DATABASE_PATH: /data/bueroplan.sqlite
+      APP_ORIGIN: ${APP_ORIGIN:?Bitte .env aus .env.example erstellen}
+      PUSH_CONTACT: ${PUSH_CONTACT:-}
+    volumes:
+      - app_data:/data
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+  caddy:
+    image: caddy:2-alpine
+    profiles: [production]
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+volumes:
+  app_data:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,43 @@
+// Run against an ISOLATED test server and a fresh test database, never production.
+import assert from 'node:assert/strict';
+import {migrate,rawDatabase} from '../server/database.mjs';
+import {hashPassword} from '../server/security.mjs';
+const origin=process.env.APP_ORIGIN;
+if(!origin?.startsWith('http://127.0.0.1:')||!process.env.DATABASE_PATH?.includes('test'))throw Error('Nur mit isolierter lokaler Testdatenbank ausführen.');
+migrate();const d=rawDatabase(),password='Synthetic-password-for-test-123';
+for(const [id,alias,role] of [['admin-test','AAA','admin'],['member-test','BBB','member']]){
+ d.prepare('INSERT INTO members(id,alias,role,created,team) VALUES(?,?,?,?,?)').run(id,alias,role,'test','nostro');
+ d.prepare('INSERT INTO local_accounts(user_id,username,password_hash) VALUES(?,?,?)').run(id,alias,hashPassword(password));
+}
+d.prepare("INSERT INTO capacities VALUES('2000-01-01',1,1,'block')").run();d.prepare("INSERT INTO settings VALUES(1,'test',0)").run();
+const request=async(path,{cookie,body,headers={},method}={})=>fetch(origin+path,{method:method|| (body?'POST':'GET'),headers:{...(body?{'Content-Type':'application/json',Origin:origin}:{}),...(cookie?{Cookie:cookie}:{}),...headers},...(body?{body:JSON.stringify(body)}:{})});
+assert.equal((await request('/api/health')).status,200);
+assert.equal((await request('/api/calendar')).status,401);
+assert.equal((await request('/api/calendar',{headers:{'oai-authenticated-user-id':'admin-test','oai-authenticated-user-email':'fake@example.org'}})).status,401);
+assert.equal((await request('/api/auth/login',{body:{username:'AAA',password:'wrong'}})).status,401);
+const signIn=async username=>{const r=await request('/api/auth/login',{body:{username,password}});assert.equal(r.status,200);const cookie=r.headers.get('set-cookie');assert(cookie.includes('HttpOnly'));assert(cookie.includes('SameSite=lax'));return cookie.split(';')[0];};
+const admin=await signIn('AAA'),member=await signIn('BBB');
+assert.equal((await request('/api/calendar',{cookie:member,body:{action:'register',alias:'XXX',team:'nostro'}})).status,403);
+assert.equal((await request('/api/calendar',{cookie:member,body:{action:'book',userId:'admin-test',start:'2026-10-01',end:'2026-10-01',status:'home'}})).status,403);
+assert.equal((await request('/api/calendar',{cookie:admin,body:{action:'book',start:'2026-10-01',end:'2026-10-01',status:'home'},headers:{Origin:'https://attacker.test'}})).status,403);
+assert.equal((await request('/api/calendar',{cookie:admin,body:{action:'book',start:'2026-10-02',end:'2026-10-02',status:'wecker'}})).status,200);
+assert.equal((await request('/api/calendar',{cookie:member,body:{action:'book',start:'2026-10-01',end:'2026-10-02',status:'wecker'}})).status,409);
+assert.equal(d.prepare("SELECT COUNT(*) n FROM bookings WHERE user_id='member-test'").get().n,0);
+assert.equal((await request('/api/calendar',{cookie:member,body:{action:'book',start:'2026-10-05',end:'2026-10-05',status:'sick'}})).status,200);
+const state=await (await request('/api/calendar?year=2026',{cookie:member})).json();assert.equal(state.me.alias,'BBB');
+assert.equal((await request('/api/calendar',{cookie:member,body:{action:'allowance',year:2026,days:1}})).status,200);
+assert.equal((await request('/api/calendar',{cookie:member,body:{action:'book',start:'2026-10-06',end:'2026-10-06',status:'vacation'}})).status,200);
+assert.equal((await request('/api/calendar',{cookie:member,body:{action:'book',start:'2026-10-07',end:'2026-10-07',status:'vacation'}})).status,409);
+assert.equal((await request('/api/social',{cookie:member,body:{action:'profile',team:'nostro',icon:'🙂',birthday:'07-05',reminders:1}})).status,200);
+assert.equal((await request('/api/social',{cookie:admin,body:{action:'teamday',team:'nostro',month:'2026-10',day:'2026-10-08',site:'strassen'}})).status,200);
+assert.equal((await request('/api/social',{cookie:admin,body:{action:'teamday',team:'nostro',month:'2026-10',day:'2026-10-15',site:'wecker'}})).status,200);
+assert.equal((await request('/api/social',{cookie:admin,body:{action:'teamday',team:'nostro',month:'2026-10',day:'2026-10-15',site:'strassen'}})).status,409);
+const teamDayState=await (await request('/api/calendar?year=2026',{cookie:admin})).json();const nostroDays=teamDayState.teamDays.filter(t=>t.team==='nostro'&&t.month==='2026-10');assert.equal(nostroDays.length,2,'Mehrere Teamtage pro Team und Monat sind über die API sichtbar');
+assert.equal((await request('/api/social',{cookie:admin,body:{action:'cancelTeamday',id:nostroDays[0].id}})).status,200);
+const remainingTeamDays=await (await request('/api/calendar?year=2026',{cookie:admin})).json();assert.equal(remainingTeamDays.teamDays.filter(t=>t.team==='nostro'&&t.month==='2026-10').length,1,'Absage entfernt nur den gewählten Teamtag');
+assert.equal((await request('/api/auth/password',{cookie:member,body:{current:password,password:'Another-synthetic-password-123'}})).status,200);
+assert.equal((await request('/api/calendar',{cookie:member})).status,401);
+assert.equal((await request('/api/auth/logout',{cookie:admin,method:'POST',headers:{Origin:origin}})).status,200);
+assert.equal((await request('/api/calendar',{cookie:admin})).status,401);
+const loginPage=await (await request('/login')).text();assert(loginPage.includes('Willkommen im Büroplan'));assert(!loginPage.includes('Mit ChatGPT'));
+console.log('PASS: production HTTP runtime, local sign-in, forged-header rejection, CSRF, account provisioning boundary, role checks, atomic capacity conflict, sickness, leave budget, birthdays, team days, password change and logout.');
