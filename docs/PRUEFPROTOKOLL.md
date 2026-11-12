@@ -34,3 +34,10 @@ Der erste Start auf deinem Server umfasst deshalb bewusst den Gesundheitscheck, 
 - `pnpm check`: TypeScript-Prüfung bestanden.
 - `pnpm build`: optimierter Next.js-Produktionsbuild erfolgreich.
 - Keine manuelle Browserprüfung auf realen Geräten in dieser Umgebung.
+
+## Hotfix 1.4.16 (12.11.2026)
+
+- Migration `0011_holiday_work.sql`: seedet „Feiertagsarbeit“, erlaubt diese Buchung nur an eingetragenen Feiertagen einschließlich Wochenend-Feiertagen, verhindert das Entfernen eines Feiertags solange diese Buchung besteht.
+- DB-Test prüft Kategorieeigenschaften, gesperrte Alternativbuchungen, Wochenend-Feiertag und Quote (Anwesenheit ohne Wecker-Zähler).
+- `pnpm test`, `pnpm check` und `pnpm build` erfolgreich.
+- Keine manuelle Browserprüfung auf realen Geräten in dieser Umgebung.

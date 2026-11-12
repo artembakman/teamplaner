@@ -1,7 +1,7 @@
 name: bueroplan
 services:
   app:
-    image: bueroplan:${APP_VERSION:-1.4.15}
+    image: bueroplan:${APP_VERSION:-1.4.16}
     build: .
     restart: unless-stopped
     init: true
@@ -22,7 +22,7 @@ services:
       options:
         max-size: "10m"
   backup:
-    image: bueroplan:${APP_VERSION:-1.4.15}
+    image: bueroplan:${APP_VERSION:-1.4.16}
     restart: unless-stopped
     init: true
     command: ["node", "scripts/backup-loop.mjs"]
@@ -44,7 +44,7 @@ services:
       options:
         max-size: "10m"
   notifications:
-    image: bueroplan:${APP_VERSION:-1.4.15}
+    image: bueroplan:${APP_VERSION:-1.4.16}
     restart: unless-stopped
     init: true
     command: ["node", "scripts/notification-loop.mjs"]

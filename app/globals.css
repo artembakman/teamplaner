@@ -237,8 +237,8 @@
 .team-month-table{width:max-content;min-width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;font-size:.75rem}
 .team-month-table th,.team-month-table td{height:42px;padding:3px;border-right:1px solid #e8edef;border-bottom:1px solid #e8edef;text-align:center}
 .team-month-table thead th{height:45px;background:#f8fafb;color:#5b7178;font-weight:600}
-.team-month-table th:not(:first-child),.team-month-table td:not(:first-child){width:44px;min-width:44px}
-.team-month-table .month-person-sticky{position:sticky;left:0;z-index:3;width:150px;min-width:150px;text-align:left;padding:6px 10px;background:#fff;box-shadow:1px 0 0 #dfe6e8}
+.team-month-table th:not(:first-child),.team-month-table td:not(:first-child){width:40px;min-width:40px}
+.team-month-table .month-person-sticky{position:sticky;left:0;z-index:3;width:132px;min-width:132px;text-align:left;padding:6px 10px;background:#fff;box-shadow:1px 0 0 #dfe6e8}
 .team-month-table thead .month-person-sticky{z-index:5;background:#f8fafb}
 .team-month-table .team-month-group .month-person-sticky{background:color-mix(in srgb,var(--team-color,#849198) 15%,white);color:color-mix(in srgb,var(--team-color,#849198) 72%,#162d32);font-weight:700}
 .team-month-table .team-month-member .month-person-sticky{background:color-mix(in srgb,var(--team-color,#849198) 5%,white)}

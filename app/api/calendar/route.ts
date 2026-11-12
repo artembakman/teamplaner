@@ -1,7 +1,7 @@
 import {sameOrigin} from '@/server/security.mjs';
 import {getChatGPTUser} from '@/app/chatgpt-auth';
 import {db} from '@/db/raw';
-import {validDate,daysBetween,today} from '@/lib/calendar';
+import {validDate,daysBetween,add,today} from '@/lib/calendar';
 export const dynamic='force-dynamic';
 const fail=(message:string,status=400)=>Response.json({error:message},{status});
 const categoryKinds=['attendance','vacation','absence','dayoff'];
@@ -57,10 +57,11 @@ export async function GET(req:Request){try{
  const d=db();const me=await d.prepare('SELECT id,alias,role,team,icon,birthday,birthday_reminders FROM members WHERE id=?').bind(user.userId).first<any>();
  if(!me){const [c,teams]=await Promise.all([d.prepare('SELECT COUNT(*) n FROM members').first<any>(),d.prepare('SELECT id,name,color,sort_order,is_system,is_assignable FROM teams ORDER BY sort_order,name').all()]);return Response.json({me:null,first:c.n===0,teams:teams.results,year});}
  const currentDay=today();
+ const todayYear=Number(currentDay.slice(0,4));
  const [members,teams,bookings,caps,categoryCapacities,categories,settings,holidays,allowances,quotaRules,teamDays,events,attendees]=await Promise.all([
  d.prepare('SELECT id,alias,role,team,icon,birthday FROM members ORDER BY alias').all(),
  d.prepare('SELECT id,name,color,sort_order,is_system,is_assignable FROM teams ORDER BY sort_order,name').all(),
- d.prepare("SELECT user_id,day,CASE WHEN status='sick' AND user_id<>? AND ?<>'admin' THEN 'absent' ELSE status END status,CASE WHEN status='sick' AND user_id<>? AND ?<>'admin' THEN '' ELSE comment END comment FROM bookings WHERE ((day BETWEEN ? AND ?) OR (day BETWEEN ? AND ?)) AND day NOT IN (SELECT day FROM holidays) AND strftime('%w',day) NOT IN ('0','6')").bind(user.userId,me.role,user.userId,me.role,`${year-1}-12-25`,`${year+1}-01-07`,`${leaveYear}-01-01`,`${leaveYear}-12-31`).all(),
+ d.prepare("SELECT user_id,day,CASE WHEN status='sick' AND user_id<>? AND ?<>'admin' THEN 'absent' ELSE status END status,CASE WHEN status='sick' AND user_id<>? AND ?<>'admin' THEN '' ELSE comment END comment FROM bookings WHERE ((day BETWEEN ? AND ?) OR (day BETWEEN ? AND ?) OR (day BETWEEN ? AND ?)) AND (((day NOT IN (SELECT day FROM holidays)) AND strftime('%w',day) NOT IN ('0','6')) OR (status='feiertagsarbeit' AND day IN (SELECT day FROM holidays)))").bind(user.userId,me.role,user.userId,me.role,`${year-1}-12-25`,`${year+1}-01-07`,`${leaveYear}-01-01`,`${leaveYear}-12-31`,`${todayYear}-01-01`,`${todayYear}-12-31`).all(),
  d.prepare('SELECT * FROM capacities ORDER BY effective').all(),d.prepare('SELECT * FROM category_capacities ORDER BY effective,category_id').all(),d.prepare('SELECT * FROM booking_categories ORDER BY sort_order,label').all(),d.prepare('SELECT * FROM settings WHERE id=1').first<any>(),d.prepare('SELECT * FROM holidays ORDER BY day').all(),d.prepare("SELECT * FROM allowances WHERE user_id=? OR ?='admin'").bind(user.userId,me.role).all(),d.prepare('SELECT * FROM quota_rules').all(),d.prepare('SELECT * FROM team_days ORDER BY day').all(),
  d.prepare('SELECT id,creator,title,day,time,site FROM events WHERE day>=? ORDER BY day,time').bind(currentDay).all(),
  d.prepare('SELECT event_id,user_id FROM attendees WHERE event_id IN (SELECT id FROM events WHERE day>=?)').bind(currentDay).all()]);
@@ -91,6 +92,7 @@ export async function POST(req:Request){try{
    const preview=categoryImpactPreview(d,b.id,next);return preview?Response.json(preview):fail('Kategorie nicht gefunden.',404);
   }
   if(b.action==='deleteCategory'){
+   if(current.id==='feiertagsarbeit')return fail('Die Kategorie „Feiertagsarbeit“ wird für Feiertagsbuchungen benötigt und kann nicht gelöscht werden.',409);
    if(current.id==='wecker')return fail('Wecker bleibt die Bezugsgröße der Monatsquote und kann nicht gelöscht werden.',409);
    const used=await d.prepare('SELECT 1 FROM bookings WHERE status=? UNION ALL SELECT 1 FROM team_days WHERE site=? UNION ALL SELECT 1 FROM events WHERE site=? LIMIT 1').bind(b.id,b.id,b.id).first();
    if(used)return fail('Die Kategorie kann nicht gelöscht werden, solange Buchungen oder Termine darauf verweisen.',409);
@@ -99,6 +101,7 @@ export async function POST(req:Request){try{
    await d.prepare('DELETE FROM booking_categories WHERE id=?').bind(b.id).run();return Response.json({ok:true});
   }
   if(current.id==='wecker'&&(next.kind!=='attendance'||!next.requiresCapacity||!next.countsForAttendance||!next.countsForWecker))return fail('Wecker muss Anwesenheit, Platzbelegung und Wecker-Zähler bleiben.',409);
+  if(current.id==='feiertagsarbeit'&&(next.kind!=='attendance'||next.requiresCapacity||!next.countsForAttendance||next.countsForWecker))return fail('Feiertagsarbeit muss als platzfreie Anwesenheit ohne Wecker-Zähler eingerichtet bleiben.',409);
   if(next.countsForWecker&&current.id!=='wecker'&&await d.prepare('SELECT 1 FROM booking_categories WHERE counts_for_wecker=1 AND id<>?').bind(b.id).first())return fail('Es gibt bereits eine Kategorie, die den Wecker-Zähler bildet.',409);
   const currentCapacity=next.requiresCapacity?await d.prepare('SELECT places,mode FROM category_capacities WHERE category_id=? AND effective<=? ORDER BY effective DESC LIMIT 1').bind(b.id,today()).first<any>():null;
   const capacityChanged=next.requiresCapacity&&(!currentCapacity||Number(currentCapacity.places)!==next.places||currentCapacity.mode!==next.capacityMode);
@@ -147,9 +150,20 @@ export async function POST(req:Request){try{
  if(!validDate(b.start)||!validDate(b.end)||b.end<b.start||(Date.parse(b.end)-Date.parse(b.start))/86400000>365)return fail('Bitte einen gültigen Zeitraum bis maximal ein Jahr angeben.');
  const selectedCategory=b.status==='clear'?null:await d.prepare('SELECT id,kind FROM booking_categories WHERE id=?').bind(b.status).first<any>();if(b.status!=='clear'&&!selectedCategory)return fail('Ungültiger Status.');
  const excluded=await d.prepare('SELECT day FROM holidays WHERE day BETWEEN ? AND ?').bind(b.start,b.end).all<any>();
+ const holidaySet=new Set<string>(excluded.results.map((x:any)=>x.day));
  const off=selectedCategory?.kind==='vacation'?await d.prepare("SELECT day FROM bookings WHERE user_id=? AND status IN (SELECT id FROM booking_categories WHERE kind='dayoff') AND day BETWEEN ? AND ?").bind(target,b.start,b.end).all<any>():{results:[]};
  const ignore=new Set([...excluded.results,...off.results].map(x=>x.day));
- const days=daysBetween(b.start,b.end).filter(day=>!ignore.has(day));if(!days.length)return fail('Keine buchbaren Tage: Wochenenden, Feiertage und bei Urlaub auch Dienstfrei werden übersprungen.');
+ const holidayWork=selectedCategory?.id==='feiertagsarbeit';const calendarDays=holidayWork||b.status==='clear'?Array.from({length:(Date.parse(b.end)-Date.parse(b.start))/86400000+1},(_,i)=>add(b.start,i)):[];
+ let days:string[];
+ if(holidayWork)days=calendarDays.filter(day=>holidaySet.has(day));
+ else {
+  days=daysBetween(b.start,b.end).filter(day=>!ignore.has(day));
+  if(b.status==='clear'){
+   const holidayBookings=await d.prepare("SELECT day FROM bookings WHERE user_id=? AND status='feiertagsarbeit' AND day BETWEEN ? AND ?").bind(target,b.start,b.end).all<any>();
+   days=[...new Set([...days,...holidayBookings.results.map((x:any)=>x.day)])];
+  }
+ }
+ if(!days.length)return fail(holidayWork?'Feiertagsarbeit kann nur an einem eingetragenen Feiertag gebucht werden.':'Keine buchbaren Tage: Wochenenden, Feiertage und bei Urlaub auch Dienstfrei werden übersprungen.');
  const comment=typeof b.comment==='string'?b.comment.trim():'';if(comment.length>240)return fail('Der Kommentar darf höchstens 240 Zeichen lang sein.');
  const now=new Date().toISOString();await d.batch(days.map(day=>b.status==='clear'?d.prepare('DELETE FROM bookings WHERE user_id=? AND day=?').bind(target,day):d.prepare('INSERT INTO bookings (user_id,day,status,updated,comment) VALUES (?,?,?,?,?) ON CONFLICT(user_id,day) DO UPDATE SET status=excluded.status,updated=excluded.updated,comment=excluded.comment').bind(target,day,b.status,now,comment)));
  return Response.json({ok:true,count:days.length});}
@@ -177,4 +191,4 @@ export async function POST(req:Request){try{
  for(const c of b.capacityChanges){if(typeof c.categoryId!=='string'||!Number.isInteger(c.places)||c.places<0||c.places>100)return fail('Bitte alle Platzanzahlen mit 0–100 angeben.');const office=await d.prepare('SELECT id FROM booking_categories WHERE id=? AND requires_capacity=1').bind(c.categoryId).first();if(!office)return fail('Ein ausgewählter platzgebundener Standort existiert nicht mehr.');capacityStatements.push(d.prepare('INSERT INTO category_capacities(category_id,effective,places,mode) VALUES(?,?,?,?) ON CONFLICT(category_id,effective) DO UPDATE SET places=excluded.places,mode=excluded.mode').bind(c.categoryId,b.effective,c.places,b.mode));}
  if(capacityStatements.length)await d.batch(capacityStatements);return Response.json({ok:true});}
  return fail('Unbekannte Aktion.');
- }catch(e){const s=String(e);console.error(e);if(s.includes('VACATION_LIMIT'))return fail('Das Urlaubskontingent reicht nicht aus. Es wurde nichts geändert. Bitte unter Mein Urlaub das Jahreskontingent prüfen.',409);if(s.includes('ALLOWANCE_BELOW_BOOKINGS'))return fail('Das Kontingent darf nicht kleiner als der bereits erfasste Urlaub sein.',409);if(s.includes('HOLIDAY_REMOVE_LIMIT'))return fail('Dieser Feiertag kann nicht entfernt werden: Wieder zählende Urlaubstage würden ein Kontingent überschreiten. Bitte zuerst Urlaub oder Kontingent anpassen.',409);if(s.includes('NON_WORKING_DAY'))return fail('Feiertage und Wochenenden können nicht gebucht werden. Bitte neu laden.',409);if(s.includes('CAPACITY_FULL'))return fail('Mindestens ein Tag ist ausgebucht. Es wurde nichts geändert. Bitte anderen Standort wählen oder Free Zone als platzfreie Anwesenheit buchen.',409);if(s.includes('members.alias'))return fail('Dieses Kürzel ist bereits vergeben.',409);if(s.includes('CAPACITY_BELOW_BOOKINGS'))return fail('Die neue Kapazität unterschreitet bestehende Buchungen. Bitte Buchungen zuerst anpassen oder Warnmodus wählen.',409);return fail('Speichern fehlgeschlagen. Deine Eingaben bleiben erhalten. Bitte erneut versuchen.',503)}}
+ }catch(e){const s=String(e);console.error(e);if(s.includes('VACATION_LIMIT'))return fail('Das Urlaubskontingent reicht nicht aus. Es wurde nichts geändert. Bitte unter Mein Urlaub das Jahreskontingent prüfen.',409);if(s.includes('ALLOWANCE_BELOW_BOOKINGS'))return fail('Das Kontingent darf nicht kleiner als der bereits erfasste Urlaub sein.',409);if(s.includes('HOLIDAY_REMOVE_LIMIT'))return fail('Dieser Feiertag kann nicht entfernt werden: Wieder zählende Urlaubstage würden ein Kontingent überschreiten. Bitte zuerst Urlaub oder Kontingent anpassen.',409);if(s.includes('HOLIDAY_WORK_BOOKED'))return fail('Dieser Feiertag kann nicht entfernt werden, solange Feiertagsarbeit eingetragen ist. Bitte zuerst die Buchung löschen.',409);if(s.includes('NON_WORKING_DAY'))return fail('Feiertagsarbeit ist nur an eingetragenen Feiertagen möglich. Andere Buchungen bleiben an Feiertagen und Wochenenden gesperrt.',409);if(s.includes('CAPACITY_FULL'))return fail('Mindestens ein Tag ist ausgebucht. Es wurde nichts geändert. Bitte anderen Standort wählen oder Free Zone als platzfreie Anwesenheit buchen.',409);if(s.includes('members.alias'))return fail('Dieses Kürzel ist bereits vergeben.',409);if(s.includes('CAPACITY_BELOW_BOOKINGS'))return fail('Die neue Kapazität unterschreitet bestehende Buchungen. Bitte Buchungen zuerst anpassen oder Warnmodus wählen.',409);return fail('Speichern fehlgeschlagen. Deine Eingaben bleiben erhalten. Bitte erneut versuchen.',503)}}

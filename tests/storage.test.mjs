@@ -9,6 +9,7 @@ const dir=mkdtempSync(join(tmpdir(),'bueroplan-test-'));
 process.env.DATABASE_PATH=join(dir,'db.sqlite');process.env.BACKUP_DIR=join(dir,'backups');process.env.APP_ORIGIN='http://localhost:3000';
 const {migrate,rawDatabase,adapter}=await import('../server/database.mjs');
 const security=await import('../server/security.mjs');
+const {quota}=await import('../lib/calendar.ts');
 const {makeBackup}=await import('../scripts/backup.mjs');
 test('fresh schema, identity, access guards, atomic booking and restorable backup',async()=>{
  migrate();migrate();const d=rawDatabase();
@@ -17,6 +18,7 @@ test('fresh schema, identity, access guards, atomic booking and restorable backu
  assert.deepEqual(d.prepare('SELECT id FROM booking_categories ORDER BY sort_order LIMIT 3').all().map(x=>x.id),['wecker','strassen','frankfurt'],'Frankfurt folgt in der Reihenfolge auf Wecker und Strassen');
  const free=d.prepare("SELECT kind,requires_capacity,counts_for_attendance,counts_for_wecker FROM booking_categories WHERE id='free'").get();assert.deepEqual({...free},{kind:'attendance',requires_capacity:0,counts_for_attendance:1,counts_for_wecker:0},'Free Zone ist Anwesenheit ohne Platz- oder Wecker-Zähler');
  assert.deepEqual({...d.prepare("SELECT kind,requires_capacity,counts_for_attendance,counts_for_wecker FROM booking_categories WHERE id='wecker'").get()},{kind:'attendance',requires_capacity:1,counts_for_attendance:1,counts_for_wecker:1},'Wecker belegt Platz und bildet Zähler der Quote');
+ assert.deepEqual({...d.prepare("SELECT kind,requires_capacity,counts_for_attendance,counts_for_wecker FROM booking_categories WHERE id='feiertagsarbeit'").get()},{kind:'attendance',requires_capacity:0,counts_for_attendance:1,counts_for_wecker:0},'Feiertagsarbeit zählt als Anwesenheit, aber nicht als Wecker-Tag oder Platzbelegung');
  assert.throws(()=>d.prepare("UPDATE booking_categories SET counts_for_wecker=1 WHERE id='strassen'").run(),/UNIQUE/,'Es darf nur eine Wecker-Zählerkategorie geben');
  const legacy=new DatabaseSync(join(dir,'legacy.sqlite'));
  legacy.exec("CREATE TABLE team_days (team TEXT NOT NULL,month TEXT NOT NULL,day TEXT NOT NULL,site TEXT NOT NULL,updated TEXT NOT NULL,PRIMARY KEY(team,month)); INSERT INTO team_days VALUES('nostro','2026-10','2026-10-08','strassen','before-update');");
@@ -45,8 +47,14 @@ test('fresh schema, identity, access guards, atomic booking and restorable backu
  d.prepare("INSERT INTO allowances VALUES('a',2026,1)").run();
  d.prepare("INSERT INTO bookings(user_id,day,status,updated) VALUES('a','2026-10-07','vacation','now')").run();
  assert.throws(()=>d.prepare("INSERT INTO bookings(user_id,day,status,updated) VALUES('a','2026-10-06','vacation','now')").run(),/VACATION_LIMIT/);
- const file=await makeBackup();assert(existsSync(file));const restored=new DatabaseSync(file);assert.equal(restored.prepare('PRAGMA integrity_check').get().integrity_check,'ok');assert.equal(restored.prepare('SELECT COUNT(*) n FROM bookings').get().n,2);restored.close();
- const target=join(dir,'restored.sqlite');const result=spawnSync(process.execPath,['scripts/restore.mjs',file,'--confirm'],{env:{...process.env,DATABASE_PATH:target},encoding:'utf8'});assert.equal(result.status,0,result.stderr);const recovered=new DatabaseSync(target);assert.equal(recovered.prepare('SELECT COUNT(*) n FROM bookings').get().n,2);assert.equal(recovered.prepare('SELECT COUNT(*) n FROM local_sessions').get().n,0);recovered.close();
+ d.prepare("INSERT INTO holidays(day,name) VALUES('2026-10-03','Testfeiertag')").run();
+ d.prepare("INSERT INTO bookings(user_id,day,status,updated) VALUES('a','2026-10-03','feiertagsarbeit','now')").run();
+ assert.throws(()=>d.prepare("INSERT INTO bookings(user_id,day,status,updated) VALUES('b','2026-10-03','wecker','now')").run(),/NON_WORKING_DAY/,'Andere Buchungskategorien bleiben an Feiertagen gesperrt');
+ assert.throws(()=>d.prepare("INSERT INTO bookings(user_id,day,status,updated) VALUES('b','2026-10-05','feiertagsarbeit','now')").run(),/NON_WORKING_DAY/,'Feiertagsarbeit kann nur an hinterlegten Feiertagen gebucht werden');
+ assert.throws(()=>d.prepare("DELETE FROM holidays WHERE day='2026-10-03'").run(),/HOLIDAY_WORK_BOOKED/,'Ein Feiertag mit Feiertagsarbeit kann nicht entfernt werden');
+ const quotaCategories=d.prepare('SELECT id,kind,counts_for_attendance,counts_for_wecker FROM booking_categories').all();const holidayQuota=quota([{user_id:'a',day:'2026-10-03',status:'feiertagsarbeit'}],'a','2026-10',60,quotaCategories);assert.equal(holidayQuota.n,1);assert.equal(holidayQuota.w,0,'Feiertagsarbeit zählt als Anwesenheit ohne Wecker-Zähler');
+ const file=await makeBackup();assert(existsSync(file));const restored=new DatabaseSync(file);assert.equal(restored.prepare('PRAGMA integrity_check').get().integrity_check,'ok');assert.equal(restored.prepare('SELECT COUNT(*) n FROM bookings').get().n,3);restored.close();
+ const target=join(dir,'restored.sqlite');const result=spawnSync(process.execPath,['scripts/restore.mjs',file,'--confirm'],{env:{...process.env,DATABASE_PATH:target},encoding:'utf8'});assert.equal(result.status,0,result.stderr);const recovered=new DatabaseSync(target);assert.equal(recovered.prepare('SELECT COUNT(*) n FROM bookings').get().n,3);assert.equal(recovered.prepare('SELECT COUNT(*) n FROM local_sessions').get().n,0);recovered.close();
  d.prepare("INSERT INTO category_capacities(category_id,effective,places,mode) VALUES('frankfurt','2026-10-08',1,'block')").run();d.prepare("INSERT INTO bookings(user_id,day,status,updated) VALUES('a','2026-10-08','frankfurt','now')").run();assert.throws(()=>d.prepare("INSERT INTO bookings(user_id,day,status,updated) VALUES('b','2026-10-08','frankfurt','now')").run(),/CAPACITY_FULL/,'Frankfurt erhält ein eigenes Platzlimit');
  d.prepare("INSERT INTO teams(id,name,color,sort_order,is_system,is_assignable) VALUES('test-team','Test Team','#7658a6',55,0,1)").run();
  d.prepare("INSERT INTO members(id,alias,role,created,team) VALUES('c','CCC','member','now','test-team')").run();
