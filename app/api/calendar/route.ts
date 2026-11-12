@@ -53,14 +53,14 @@ function categoryImpactPreview(d:any,id:string,next:any){
 }
 export async function GET(req:Request){try{
  const user=await getChatGPTUser();if(!user)return fail('Bitte anmelden.',401);
- const year=Number(new URL(req.url).searchParams.get('year')||new Date().getFullYear());if(!Number.isInteger(year)||year<2000||year>2099)return fail('Ungültiges Jahr.');
+ const params=new URL(req.url).searchParams;const year=Number(params.get('year')||new Date().getFullYear());const leaveYear=Number(params.get('leaveYear')||year);if(!Number.isInteger(year)||year<2000||year>2099||!Number.isInteger(leaveYear)||leaveYear<2000||leaveYear>2099)return fail('Ungültiges Jahr.');
  const d=db();const me=await d.prepare('SELECT id,alias,role,team,icon,birthday,birthday_reminders FROM members WHERE id=?').bind(user.userId).first<any>();
  if(!me){const [c,teams]=await Promise.all([d.prepare('SELECT COUNT(*) n FROM members').first<any>(),d.prepare('SELECT id,name,color,sort_order,is_system,is_assignable FROM teams ORDER BY sort_order,name').all()]);return Response.json({me:null,first:c.n===0,teams:teams.results,year});}
  const currentDay=today();
  const [members,teams,bookings,caps,categoryCapacities,categories,settings,holidays,allowances,quotaRules,teamDays,events,attendees]=await Promise.all([
  d.prepare('SELECT id,alias,role,team,icon,birthday FROM members ORDER BY alias').all(),
  d.prepare('SELECT id,name,color,sort_order,is_system,is_assignable FROM teams ORDER BY sort_order,name').all(),
- d.prepare("SELECT user_id,day,CASE WHEN status='sick' AND user_id<>? AND ?<>'admin' THEN 'absent' ELSE status END status,CASE WHEN status='sick' AND user_id<>? AND ?<>'admin' THEN '' ELSE comment END comment FROM bookings WHERE day BETWEEN ? AND ? AND day NOT IN (SELECT day FROM holidays) AND strftime('%w',day) NOT IN ('0','6')").bind(user.userId,me.role,user.userId,me.role,`${year-1}-12-25`,`${year+1}-01-07`).all(),
+ d.prepare("SELECT user_id,day,CASE WHEN status='sick' AND user_id<>? AND ?<>'admin' THEN 'absent' ELSE status END status,CASE WHEN status='sick' AND user_id<>? AND ?<>'admin' THEN '' ELSE comment END comment FROM bookings WHERE ((day BETWEEN ? AND ?) OR (day BETWEEN ? AND ?)) AND day NOT IN (SELECT day FROM holidays) AND strftime('%w',day) NOT IN ('0','6')").bind(user.userId,me.role,user.userId,me.role,`${year}-01-01`,`${year}-12-31`,`${leaveYear}-01-01`,`${leaveYear}-12-31`).all(),
  d.prepare('SELECT * FROM capacities ORDER BY effective').all(),d.prepare('SELECT * FROM category_capacities ORDER BY effective,category_id').all(),d.prepare('SELECT * FROM booking_categories ORDER BY sort_order,label').all(),d.prepare('SELECT * FROM settings WHERE id=1').first<any>(),d.prepare('SELECT * FROM holidays ORDER BY day').all(),d.prepare("SELECT * FROM allowances WHERE user_id=? OR ?='admin'").bind(user.userId,me.role).all(),d.prepare('SELECT * FROM quota_rules').all(),d.prepare('SELECT * FROM team_days ORDER BY day').all(),
  d.prepare('SELECT id,creator,title,day,time,site FROM events WHERE day>=? ORDER BY day,time').bind(currentDay).all(),
  d.prepare('SELECT event_id,user_id FROM attendees WHERE event_id IN (SELECT id FROM events WHERE day>=?)').bind(currentDay).all()]);

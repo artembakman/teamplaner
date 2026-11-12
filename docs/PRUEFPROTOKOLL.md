@@ -26,3 +26,11 @@ Stand 30.09.2026. Tests verwenden ausschließlich künstliche Daten.
 - Datenmigration aus der bestehenden Sites-App; kein Zugriff auf deren Mitarbeiterdaten erfolgt.
 
 Der erste Start auf deinem Server umfasst deshalb bewusst den Gesundheitscheck, die Kontoanlage und eine Probebuchung. Es wurden keine Pakete auf deiner Infrastruktur installiert und keine externen Ports geöffnet.
+
+## Hotfix 1.4.15 (12.11.2026)
+
+- Kalendertage für die Team-Monatsansicht: Tests für Februar 2026/2028, 30-/31-Tage-Monate, Datumsreihenfolge und ungültige Monatswerte bestanden.
+- `pnpm test`: 4 Tests bestanden.
+- `pnpm check`: TypeScript-Prüfung bestanden.
+- `pnpm build`: optimierter Next.js-Produktionsbuild erfolgreich.
+- Keine manuelle Browserprüfung auf realen Geräten in dieser Umgebung.

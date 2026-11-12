@@ -216,3 +216,59 @@
  .member-admin-row .member-admin-name,.member-admin-row .member-admin-actions{grid-column:1/-1}
 }
 @media(max-width:380px){.member-admin-row{grid-template-columns:1fr}.settings-body .member-admin-row>label:nth-child(n){grid-column:1}.member-admin-actions{grid-template-columns:1fr}.member-admin-actions button:last-child{grid-column:1}}
+
+/* Compact, horizontally scrollable team calendars with a frozen member column. */
+.calendar-toolbar{flex-wrap:wrap}
+.today-reference{flex:0 0 100%;text-align:right;color:#61777d;font-size:.75rem}
+.week-scroll{overflow-x:auto;overscroll-behavior-inline:contain;-webkit-overflow-scrolling:touch}
+.week-scroll>[data-slot=table-container]{overflow:visible}
+.week-table{min-width:760px;border-collapse:separate;border-spacing:0}
+.week-table thead th:first-child,.week-table tbody td:first-child{position:sticky;left:0;z-index:3;box-shadow:1px 0 0 #dfe6e8}
+.week-table thead th:first-child{z-index:5;background:#fafcfc}
+.week-table tbody .team-group-row td:first-child{z-index:4}
+.week-table tbody .capacity-row td:first-child{z-index:4;background:#fafcfc}
+.week-table td{height:58px;padding:6px 5px}
+.week-table .day-entry{min-height:30px;gap:3px}
+.week-table .status{padding:4px 8px;font-size:.78rem}
+.team-member-row .person{gap:7px}
+.team-member-row .person>.avatar{width:24px;height:24px}
+.team-month-hint{padding:0 18px 10px;color:#6b7f84;font-size:.75rem}
+.team-month-scroll{width:100%;max-width:100%;overflow:auto;overscroll-behavior-inline:contain;-webkit-overflow-scrolling:touch}
+.team-month-table{width:max-content;min-width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;font-size:.75rem}
+.team-month-table th,.team-month-table td{height:42px;padding:3px;border-right:1px solid #e8edef;border-bottom:1px solid #e8edef;text-align:center}
+.team-month-table thead th{height:45px;background:#f8fafb;color:#5b7178;font-weight:600}
+.team-month-table th:not(:first-child),.team-month-table td:not(:first-child){width:44px;min-width:44px}
+.team-month-table .month-person-sticky{position:sticky;left:0;z-index:3;width:150px;min-width:150px;text-align:left;padding:6px 10px;background:#fff;box-shadow:1px 0 0 #dfe6e8}
+.team-month-table thead .month-person-sticky{z-index:5;background:#f8fafb}
+.team-month-table .team-month-group .month-person-sticky{background:color-mix(in srgb,var(--team-color,#849198) 15%,white);color:color-mix(in srgb,var(--team-color,#849198) 72%,#162d32);font-weight:700}
+.team-month-table .team-month-member .month-person-sticky{background:color-mix(in srgb,var(--team-color,#849198) 5%,white)}
+.team-month-table .team-month-group td{height:34px;background:color-mix(in srgb,var(--team-color,#849198) 7%,white)}
+.team-month-table .team-month-group td.team-month-teamday{background:color-mix(in srgb,var(--team-color,#849198) 19%,white);color:color-mix(in srgb,var(--team-color,#849198) 74%,#162d32);font-weight:700}
+.team-month-table .team-month-group td span{display:block;font-size:.68rem;white-space:nowrap}
+.team-month-table th.weekend,.team-month-table td.weekend{background:#f5f7f8}
+.team-month-table th.current,.team-month-table td.current{background:#edf5f1}
+.team-month-table td.holiday{background:#faf4e9}
+.month-person{display:flex;align-items:center;gap:7px;min-width:0;font-weight:600}
+.month-person>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.month-person small{margin-left:5px;color:#71847b;font-size:.65rem;font-weight:400}
+.team-month-entry{width:100%;height:32px;min-width:30px;display:flex;align-items:center;justify-content:center;gap:2px;border:0;border-radius:5px;background:transparent;padding:0;color:#60747a}
+.team-month-entry:not(:disabled):hover{background:#eaf2ed}
+.team-month-status{min-width:27px;max-width:39px;overflow:hidden;text-overflow:clip;border-radius:4px;padding:3px 2px;font-size:.66rem;font-weight:700;white-space:nowrap}
+.team-month-entry>svg{flex:none;color:#71848a}
+.team-month-add{font-size:1.15rem;color:#99a8ad;line-height:1}
+.team-month-off{font-size:.65rem;color:#839197}
+.allowance-year-picker{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:14px 0 7px}
+.allowance-year-picker label{margin:0;font-size:.8125rem}
+.allowance-year-picker select{min-height:40px;padding:7px 10px;border:1px solid #d6e0e5;border-radius:7px;background:#fff;color:#243e48;font:inherit}
+.allowance-year-picker span{font-size:.75rem;color:#75868a}
+@media(max-width:760px){
+ .calendar-toolbar{padding:14px 12px;gap:10px}
+ .calendar-toolbar>[data-slot=tabs]{max-width:100%;overflow-x:auto}
+ .today-reference{text-align:left}
+ .week-table{min-width:700px}
+ .week-table .person-col,.week-table tbody td:first-child{min-width:132px}
+ .team-month-hint{padding:0 11px 9px}
+ .team-month-table .month-person-sticky{width:126px;min-width:126px;padding:5px 7px}
+ .team-month-table th:not(:first-child),.team-month-table td:not(:first-child){width:40px;min-width:40px}
+ .allowance-year-picker{align-items:flex-start;flex-direction:column;gap:6px}
+}

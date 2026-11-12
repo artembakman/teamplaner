@@ -12,6 +12,7 @@ export type Data={me:Member|null;members:Member[];teams:Team[];bookings:Booking[
 export function iso(d:Date){return d.toISOString().slice(0,10)}
 export function today(){return new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Luxembourg'}).format(new Date())}
 export function add(day:string,n:number){const d=new Date(day+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return iso(d)}
+export function daysOfMonth(month:string){if(!/^20\d{2}-(0[1-9]|1[0-2])$/.test(month))throw Error('Ungültiger Monat.');const [year,monthNumber]=month.split('-').map(Number);const count=new Date(Date.UTC(year,monthNumber,0)).getUTCDate();return Array.from({length:count},(_,i)=>add(`${month}-01`,i))}
 export function weekday(day:string){return new Date(day+'T12:00:00Z').getUTCDay()}
 export function daysBetween(start:string,end:string){const out:string[]=[];for(let d=start;d<=end;d=add(d,1)){if(![0,6].includes(weekday(d)))out.push(d);if(out.length>270)throw Error('Zeitraum zu groß.');}return out}
 export function capacityAt(c:Capacity[],day:string):Capacity{return [...c].sort((a,b)=>b.effective.localeCompare(a.effective)).find(x=>x.effective<=day)||{effective:'2000-01-01',wecker:6,strassen:6,mode:'block'}}

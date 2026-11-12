@@ -1,6 +1,6 @@
-# Teamplaner – privates Hosting, Version 1.4.14
+# Teamplaner – privates Hosting, Version 1.4.15
 
-Stand: 6. November 2026. Enthält die wiederhergestellten Funktionen der bisherigen App.
+Stand: 12. November 2026. Enthält die Team-Monatsansicht, kompaktere Wochenzeilen, eingefrorene Namensspalten, eine frei wählbare Urlaubskontingent-Jahresauswahl und eine fest ausgewiesene heutige Datumsmarkierung.
 
 **Empfohlener Weg:** Quellpaket entpacken und mit Docker Compose betreiben. Du benötigst kein ChatGPT-Konto, keine Cloudflare-Datenbank und kein OpenAI-API-Abonnement. Die Anwendung verwendet keine KI zur Verarbeitung deiner Einträge.
 
