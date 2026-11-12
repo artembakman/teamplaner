@@ -1,0 +1,21 @@
+node_modules/
+.next/
+.env
+.env.*
+!.env.example
+data/
+backups/
+*.tsbuildinfo
+*.sqlite
+*.sqlite-*
+*.db
+*.pem
+*.key
+*.credentials.txt
+
+# Host-specific operations notes and one-off production user initialization
+/*.md
+!/README.md
+README.txt
+scripts/initialize-production.mjs
+scripts/reset-initial-passwords.mjs
