@@ -1,4 +1,4 @@
-# Teamplaner – privates Hosting, Version 1.4.16
+# Teamplaner – privates Hosting, Version 1.4.17
 
 Stand: 12. November 2026. Enthält die Team-Monatsansicht, kompaktere Wochenzeilen, eingefrorene Namensspalten, eine frei wählbare Urlaubskontingent-Jahresauswahl, eine feste Anzeige der heutigen Platzbelegung und Feiertagsarbeit.
 
